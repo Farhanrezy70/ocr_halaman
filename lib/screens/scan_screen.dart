@@ -2,8 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'result_screen.dart';
 
 late List<CameraDescription> cameras;
@@ -16,8 +14,8 @@ class ScanScreen extends StatefulWidget {
 }
 
 class _ScanScreenState extends State<ScanScreen> {
-  late CameraController _controller;
-  late Future<void> _initializeControllerFuture;
+  CameraController? _controller;
+  Future<void>? _initializeControllerFuture;
 
   @override
   void initState() {
@@ -26,28 +24,40 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void _initCamera() async {
-    cameras = await availableCameras();
-    _controller = CameraController(cameras[0], ResolutionPreset.medium);
-    _initializeControllerFuture = _controller.initialize();
-    if (mounted) setState(() {});
+    try {
+      cameras = await availableCameras();
+      _controller = CameraController(cameras[0], ResolutionPreset.medium);
+      _initializeControllerFuture = _controller!.initialize();
+      if (mounted) setState(() {});
+    } catch (e) {
+      debugPrint("Error initializing camera: $e");
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _controller?.dispose();
     super.dispose();
   }
 
   Future<String> _ocrFromFile(File imageFile) async {
     final inputImage = InputImage.fromFile(imageFile);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-    final RecognizedText recognizedText = await textRecognizer.processImage(inputImage);
+    final RecognizedText recognizedText =
+        await textRecognizer.processImage(inputImage);
     textRecognizer.close();
     return recognizedText.text;
   }
 
   Future<void> _takePicture() async {
     try {
+      if (_controller == null || !_controller!.value.isInitialized) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kamera belum siap')),
+        );
+        return;
+      }
+
       await _initializeControllerFuture;
 
       if (!mounted) return;
@@ -59,7 +69,7 @@ class _ScanScreenState extends State<ScanScreen> {
         ),
       );
 
-      final XFile image = await _controller.takePicture();
+      final XFile image = await _controller!.takePicture();
       final ocrText = await _ocrFromFile(File(image.path));
 
       if (!mounted) return;
@@ -78,7 +88,8 @@ class _ScanScreenState extends State<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_controller.value.isInitialized) {
+    // Jika kamera belum diinisialisasi
+    if (_initializeControllerFuture == null) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -86,25 +97,35 @@ class _ScanScreenState extends State<ScanScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kamera OCR')),
-      body: Column(
-        children: [
-          Expanded(
-            child: AspectRatio(
-              aspectRatio: _controller.value.aspectRatio,
-              child: CameraPreview(_controller),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: ElevatedButton.icon(
-              onPressed: _takePicture,
-              icon: const Icon(Icons.camera),
-              label: const Text('Ambil Foto & Scan'),
-            ),
-          ),
-        ],
+      body: FutureBuilder(
+        future: _initializeControllerFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done &&
+              _controller != null &&
+              _controller!.value.isInitialized) {
+            return Column(
+              children: [
+                Expanded(
+                  child: AspectRatio(
+                    aspectRatio: _controller!.value.aspectRatio,
+                    child: CameraPreview(_controller!),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: ElevatedButton.icon(
+                    onPressed: _takePicture,
+                    icon: const Icon(Icons.camera),
+                    label: const Text('Ambil Foto & Scan'),
+                  ),
+                ),
+              ],
+            );
+          } else {
+            return const Center(child: CircularProgressIndicator());
+          }
+        },
       ),
     );
   }
 }
-  
