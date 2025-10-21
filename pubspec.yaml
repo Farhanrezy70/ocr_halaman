@@ -36,6 +36,9 @@ dependencies:
   path_provider: ^2.1.2
   path: ^1.8.3
 
+  flutter_tts: ^3.8.0
+
+
 dependency_overrides:
   google_mlkit_commons: ^0.6.1
 
