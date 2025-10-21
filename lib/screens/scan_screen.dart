@@ -2,6 +2,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'result_screen.dart';
 
 late List<CameraDescription> cameras;
@@ -23,14 +25,27 @@ class _ScanScreenState extends State<ScanScreen> {
     _initCamera();
   }
 
-  void _initCamera() async {
+  Future<void> _initCamera() async {
     try {
       cameras = await availableCameras();
-      _controller = CameraController(cameras[0], ResolutionPreset.medium);
+
+      _controller = CameraController(
+        cameras.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
       _initializeControllerFuture = _controller!.initialize();
+
+      await _initializeControllerFuture;
       if (mounted) setState(() {});
     } catch (e) {
-      debugPrint("Error initializing camera: $e");
+      debugPrint('Error saat mengambil foto: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Pemindaian Gagal! Periksa Izin Kamera atau coba lagi.'),
+        ),
+      );
     }
   }
 
@@ -44,65 +59,65 @@ class _ScanScreenState extends State<ScanScreen> {
     final inputImage = InputImage.fromFile(imageFile);
     final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
     final RecognizedText recognizedText =
-        await textRecognizer.processImage(inputImage);
+    await textRecognizer.processImage(inputImage);
     textRecognizer.close();
     return recognizedText.text;
   }
 
   Future<void> _takePicture() async {
-    try {
-      if (_controller == null || !_controller!.value.isInitialized) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kamera belum siap')),
-        );
-        return;
-      }
-
-      await _initializeControllerFuture;
-
-      if (!mounted) return;
-
+    if (_controller == null || !_controller!.value.isInitialized) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Memproses OCR, mohon tunggu...'),
-          duration: Duration(seconds: 2),
-        ),
+        const SnackBar(content: Text('Kamera belum siap')),
       );
+      return;
+    }
+
+    try {
+      await _initializeControllerFuture;
 
       final XFile image = await _controller!.takePicture();
       final ocrText = await _ocrFromFile(File(image.path));
 
       if (!mounted) return;
-
       Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => ResultScreen(ocrText: ocrText)),
       );
     } catch (e) {
-      if (!mounted) return;
+      debugPrint('Error saat mengambil foto: $e');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saat mengambil/memproses foto: $e')),
+        SnackBar(content: Text('Terjadi kesalahan: $e')),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Jika kamera belum diinisialisasi
-    if (_initializeControllerFuture == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+    if (_controller == null || !_controller!.value.isInitialized) {
+      return Scaffold(
+        backgroundColor: Colors.grey[900],
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: Colors.yellow),
+              SizedBox(height: 20),
+              Text(
+                'Memuat Kamera... Harap tunggu.',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     return Scaffold(
       appBar: AppBar(title: const Text('Kamera OCR')),
-      body: FutureBuilder(
+      body: FutureBuilder<void>(
         future: _initializeControllerFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done &&
-              _controller != null &&
-              _controller!.value.isInitialized) {
+          if (snapshot.connectionState == ConnectionState.done) {
             return Column(
               children: [
                 Expanded(
